@@ -320,14 +320,35 @@ int coreclr_initialize(
     hr = host->Start();
     IfFailRet(hr);
 
+    int appDomainPropertyCount = propertyCount + 1;
+    NewArrayHolder<LPCWSTR> propertyKeysHolder = new LPCWSTR[appDomainPropertyCount];
+    NewArrayHolder<LPCWSTR> propertyValuesHolder = new LPCWSTR[appDomainPropertyCount];
+
+    int propertyIndex = 0;
+    while (propertyIndex < propertyCount)
+    {
+        propertyKeysHolder[propertyIndex] = propertyKeysW[propertyIndex];
+        propertyValuesHolder[propertyIndex] = propertyValuesW[propertyIndex];
+        propertyIndex++;
+    }
+
+    SString diagnostic_startup_hook_property;
+    diagnostic_startup_hook_property.SetLiteral(HOST_PROPERTY_DIAGNOSTIC_STARTUP_HOOKS);
+    SString diagnostic_startup_hook_paths;
+    if (!HostInformation::GetProperty (HOST_PROPERTY_DIAGNOSTIC_STARTUP_HOOKS, diagnostic_startup_hook_paths))
+        diagnostic_startup_hook_paths.Clear();
+    propertyKeysHolder[propertyIndex] = diagnostic_startup_hook_property.GetUnicode();
+    propertyValuesHolder[propertyIndex] = diagnostic_startup_hook_paths.GetUnicode();
+    propertyIndex++;
+
     hr = host->CreateAppDomainWithManager(
         appDomainFriendlyNameW,
         APPDOMAIN_SECURITY_DEFAULT,
         NULL,                    // Name of the assembly that contains the AppDomainManager implementation
         NULL,                    // The AppDomainManager implementation type name
-        propertyCount,
-        propertyKeysW,
-        propertyValuesW,
+        appDomainPropertyCount,
+        propertyKeysHolder,
+        propertyValuesHolder,
         (DWORD *)domainId);
 
     if (SUCCEEDED(hr))

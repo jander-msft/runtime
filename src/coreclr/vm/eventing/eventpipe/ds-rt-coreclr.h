@@ -329,6 +329,44 @@ ds_rt_disable_perfmap (void)
 #endif // FEATURE_PERFMAP
 }
 
+static
+uint32_t
+ds_rt_apply_startup_hook (const ep_char16_t *startup_hook_path)
+{
+	HRESULT hr = S_OK;
+	// This is set to true when the EE has initialized, which occurs after
+	// the diagnostic suspension point has completed.
+	if (g_fEEStarted)
+	{
+		// This is not actually starting the EE (the above already checked that),
+		// but waits for the EE to be started so that the startup hook can be loaded
+		// and executed.
+		IfFailRet(EnsureEEStarted());
+
+		// TODO: load_assembly, get_function_pointer, invoke
+		// Do not use load_assembly_and_get_function_pointer since that will
+		// load the assembly in a new ALC; need startup hook to execute in
+		// default ALC as it would normally do at startup.
+	}
+	else
+	{
+		// Prepend the new startup hook to the existing list of diagnostic startup hooks
+		SString new_paths(reinterpret_cast<LPCWSTR>(startup_hook_path));
+
+		SString old_paths;
+		if (HostInformation::GetProperty (HOST_PROPERTY_DIAGNOSTIC_STARTUP_HOOKS, old_paths) &&
+			!old_paths.IsEmpty())
+		{
+			new_paths.Append(PATH_SEPARATOR_STR_W);
+			new_paths.Append(old_paths);
+		}
+
+		HostInformation::SetProperty (HOST_PROPERTY_DIAGNOSTIC_STARTUP_HOOKS, new_paths);
+	}
+
+	return DS_IPC_S_OK;
+}
+
 /*
 * DiagnosticServer.
 */
