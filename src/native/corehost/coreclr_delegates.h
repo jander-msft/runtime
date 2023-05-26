@@ -20,6 +20,23 @@
 
 #define UNMANAGEDCALLERSONLY_METHOD ((const char_t*)-1)
 
+// Delegates for these types will have the stdcall calling convention unless otherwise specified
+enum class coreclr_delegate_type
+{
+    invalid,
+    com_activation,
+    load_in_memory_assembly,
+    winrt_activation,
+    com_register,
+    com_unregister,
+    load_assembly_and_get_function_pointer,
+    get_function_pointer,
+    load_assembly,
+    load_assembly_bytes,
+
+    __last, // Sentinel value for determining the last known delegate type
+};
+
 // Signature of delegate returned by coreclr_delegate_type::load_assembly_and_get_function_pointer
 typedef int (CORECLR_DELEGATE_CALLTYPE *load_assembly_and_get_function_pointer_fn)(
     const char_t *assembly_path      /* Fully qualified path to assembly */,

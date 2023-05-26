@@ -40,3 +40,11 @@ bool HostInformation::GetProperty(_In_z_ const char* name, SString& value)
 
     return lenActual > 0 && lenActual <= len;
 }
+
+int HostInformation::GetDelegate(_In_ coreclr_delegate_type type, _Outptr_ void** delegate)
+{
+    if (s_hostContract == nullptr || s_hostContract->get_runtime_delegate == nullptr)
+        return -1;
+
+    return s_hostContract->get_runtime_delegate(type, s_hostContract->context, delegate);
+}

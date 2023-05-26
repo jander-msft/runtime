@@ -133,6 +133,70 @@ namespace
 
         return -1;
     }
+
+    int HOST_CONTRACT_CALLTYPE get_runtime_delegate(
+        coreclr_delegate_type type,
+        void* contract_context,
+        void** delegate)
+    {
+        hostpolicy_context_t* context = static_cast<hostpolicy_context_t*>(contract_context);
+        coreclr_t *coreclr = context->coreclr.get();
+        switch (type)
+        {
+        case coreclr_delegate_type::com_activation:
+            return coreclr->create_delegate(
+                "System.Private.CoreLib",
+                "Internal.Runtime.InteropServices.ComActivator",
+                "GetClassFactoryForTypeInternal",
+                delegate);
+        case coreclr_delegate_type::load_in_memory_assembly:
+            return coreclr->create_delegate(
+                "System.Private.CoreLib",
+                "Internal.Runtime.InteropServices.InMemoryAssemblyLoader",
+                "LoadInMemoryAssembly",
+                delegate);
+        case coreclr_delegate_type::winrt_activation:
+            return StatusCode::InvalidArgFailure;
+        case coreclr_delegate_type::com_register:
+            return coreclr->create_delegate(
+                "System.Private.CoreLib",
+                "Internal.Runtime.InteropServices.ComActivator",
+                "RegisterClassForTypeInternal",
+                delegate);
+        case coreclr_delegate_type::com_unregister:
+            return coreclr->create_delegate(
+                "System.Private.CoreLib",
+                "Internal.Runtime.InteropServices.ComActivator",
+                "UnregisterClassForTypeInternal",
+                delegate);
+        case coreclr_delegate_type::load_assembly_and_get_function_pointer:
+            return coreclr->create_delegate(
+                "System.Private.CoreLib",
+                "Internal.Runtime.InteropServices.ComponentActivator",
+                "LoadAssemblyAndGetFunctionPointer",
+                delegate);
+        case coreclr_delegate_type::get_function_pointer:
+            return coreclr->create_delegate(
+                "System.Private.CoreLib",
+                "Internal.Runtime.InteropServices.ComponentActivator",
+                "GetFunctionPointer",
+                delegate);
+        case coreclr_delegate_type::load_assembly:
+            return coreclr->create_delegate(
+                "System.Private.CoreLib",
+                "Internal.Runtime.InteropServices.ComponentActivator",
+                "LoadAssembly",
+                delegate);
+        case coreclr_delegate_type::load_assembly_bytes:
+            return coreclr->create_delegate(
+                "System.Private.CoreLib",
+                "Internal.Runtime.InteropServices.ComponentActivator",
+                "LoadAssemblyBytes",
+                delegate);
+        default:
+            return StatusCode::LibHostInvalidArgs;
+        }
+    }
 }
 
 bool hostpolicy_context_t::should_read_rid_fallback_graph(const hostpolicy_init_t &init)
@@ -377,6 +441,7 @@ int hostpolicy_context_t::initialize(const hostpolicy_init_t &hostpolicy_init, c
 #endif
         }
 
+        host_contract.get_runtime_delegate = &get_runtime_delegate;
         host_contract.get_runtime_property = &get_runtime_property;
         pal::stringstream_t ptr_stream;
         ptr_stream << "0x" << std::hex << (size_t)(&host_contract);

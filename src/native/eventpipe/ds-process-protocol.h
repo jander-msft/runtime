@@ -201,6 +201,7 @@ struct _DiagnosticsApplyStartupHookPayload_Internal {
 #endif
 	uint8_t * incoming_buffer;
 
+	const ep_char16_t *startup_hook_assembly_name;
 	const ep_char16_t *startup_hook_path;
 };
 
