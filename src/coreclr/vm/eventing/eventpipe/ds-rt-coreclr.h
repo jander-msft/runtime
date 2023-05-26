@@ -68,6 +68,8 @@
 #undef DS_EXIT_BLOCKING_PAL_SECTION
 #define DS_EXIT_BLOCKING_PAL_SECTION
 
+using action_fn = void(STDMETHODCALLTYPE*)();
+
 /*
 * AutoTrace.
 */
@@ -331,7 +333,7 @@ ds_rt_disable_perfmap (void)
 
 static
 uint32_t
-ds_rt_apply_startup_hook (const ep_char16_t *startup_hook_path)
+ds_rt_apply_startup_hook (const ep_char16_t *startup_hook_path, const ep_char16_t *startup_hook_assembly_name)
 {
 	HRESULT hr = S_OK;
 	// This is set to true when the EE has initialized, which occurs after
@@ -343,10 +345,43 @@ ds_rt_apply_startup_hook (const ep_char16_t *startup_hook_path)
 		// and executed.
 		IfFailRet(EnsureEEStarted());
 
-		// TODO: load_assembly, get_function_pointer, invoke
 		// Do not use load_assembly_and_get_function_pointer since that will
 		// load the assembly in a new ALC; need startup hook to execute in
 		// default ALC as it would normally do at startup.
+		load_assembly_fn load_assembly = nullptr;
+		IfFailRet(HostInformation::GetDelegate(
+			coreclr_delegate_type::load_assembly,
+			(void**)&load_assembly));
+
+		SString startup_hook_path_str(reinterpret_cast<LPCWSTR>(startup_hook_path));
+		IfFailRet(load_assembly(
+			startup_hook_path_str.GetUnicode(),
+			nullptr,
+			nullptr));
+
+		get_function_pointer_fn get_function_pointer = nullptr;
+		IfFailRet(HostInformation::GetDelegate(
+			coreclr_delegate_type::get_function_pointer,
+			(void**)&get_function_pointer));
+
+		// Get StartupHook.Initialize from assembly
+		SString method_name_str;
+		method_name_str.SetLiteral("StartupHook, ");
+		method_name_str.Append(reinterpret_cast<LPCWSTR>(startup_hook_assembly_name));
+
+		action_fn startup_hook_initialize = nullptr;
+		IfFailRet(get_function_pointer(
+			method_name_str.GetUnicode(),
+			TEXT("Initialize"),
+			TEXT("System.Action, System.Private.CoreLib"),
+			nullptr,
+			nullptr,
+			(void**)&startup_hook_initialize));
+
+		EX_TRY {
+			startup_hook_initialize();
+		}
+		EX_CATCH_HRESULT (hr);
 	}
 	else
 	{

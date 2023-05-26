@@ -6,6 +6,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "coreclr_delegates.h"
 
 #if defined(_WIN32)
     #define HOST_CONTRACT_CALLTYPE __stdcall
@@ -58,6 +59,11 @@ struct host_runtime_contract
     const void* (HOST_CONTRACT_CALLTYPE* pinvoke_override)(
         const char* library_name,
         const char* entry_point_name);
+    
+    int (HOST_CONTRACT_CALLTYPE *get_runtime_delegate)(
+        coreclr_delegate_type type,
+        void* contract_context,
+        /*out*/ void** delegate);
 };
 
 #endif // __HOST_RUNTIME_CONTRACT_H__

@@ -274,7 +274,7 @@ ds_rt_disable_perfmap (void)
 
 static
 uint32_t
-ds_rt_apply_startup_hook (const ep_char16_t *startup_hook_path)
+ds_rt_apply_startup_hook (const ep_char16_t *startup_hook_path, const ep_char16_t *startup_hook_assembly_name)
 {
 	return DS_IPC_E_NOTSUPPORTED;
 }

@@ -4,6 +4,7 @@
 #ifndef __COREHOST_CONTEXT_CONTRACT_H__
 #define __COREHOST_CONTEXT_CONTRACT_H__
 
+#include "coreclr_delegates.h"
 #include "host_interface.h"
 #include "hostpolicy.h"
 #include <pal.h>
@@ -15,23 +16,6 @@ enum initialization_options_t : uint32_t
     get_contract = 0x2,                        // Get the contract for the initialized hostpolicy
     context_contract_version_set = 0x80000000, // The version field has been set in the corehost_context_contract
                                                // on input indicating the maximum size of the buffer which can be filled
-};
-
-// Delegates for these types will have the stdcall calling convention unless otherwise specified
-enum class coreclr_delegate_type
-{
-    invalid,
-    com_activation,
-    load_in_memory_assembly,
-    winrt_activation,
-    com_register,
-    com_unregister,
-    load_assembly_and_get_function_pointer,
-    get_function_pointer,
-    load_assembly,
-    load_assembly_bytes,
-
-    __last, // Sentinel value for determining the last known delegate type
 };
 
 #pragma pack(push, _HOST_INTERFACE_PACK)

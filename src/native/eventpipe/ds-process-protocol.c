@@ -908,7 +908,8 @@ apply_startup_hook_command_try_parse_payload (
 
 	instance->incoming_buffer = buffer;
 
-	if (!ds_ipc_message_try_parse_string_utf16_t (&buffer_cursor, &buffer_cursor_len, &instance->startup_hook_path))
+	if (!ds_ipc_message_try_parse_string_utf16_t (&buffer_cursor, &buffer_cursor_len, &instance->startup_hook_assembly_name) ||
+		!ds_ipc_message_try_parse_string_utf16_t (&buffer_cursor, &buffer_cursor_len, &instance->startup_hook_path))
 		ep_raise_error ();
 
 ep_on_exit:
@@ -940,7 +941,7 @@ process_protocol_helper_apply_startup_hook (
 	}
 
 	ds_ipc_result_t ipc_result;
-	ipc_result = ds_rt_apply_startup_hook (payload->startup_hook_path);
+	ipc_result = ds_rt_apply_startup_hook (payload->startup_hook_path, payload->startup_hook_assembly_name);
 	if (ipc_result != DS_IPC_S_OK) {
 		ds_ipc_message_send_error (stream, ipc_result);
 		ep_raise_error ();
