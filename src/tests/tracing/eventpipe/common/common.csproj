@@ -15,6 +15,7 @@
   <ItemGroup>
     <Compile Include="IpcTraceTest.cs" />
     <Compile Include="IpcUtils.cs" />
+    <Compile Include="ProcessInfoValidator.cs" />
     <Compile Include="Reverse.cs" />
     <Compile Include="StreamProxy.cs" />
     <ProjectReference Include="Microsoft.Diagnostics.NETCore.Client/Microsoft.Diagnostics.NETCore.Client.csproj" />

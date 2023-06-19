@@ -2,7 +2,9 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -63,7 +65,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// <param name="circularBufferMB">The size of the runtime's buffer for collecting events in MB</param>
         /// <returns>
         /// An EventPipeSession object representing the EventPipe session that just started.
-        /// </returns> 
+        /// </returns>
         public EventPipeSession StartEventPipeSession(IEnumerable<EventPipeProvider> providers, bool requestRundown = true, int circularBufferMB = 256)
         {
             return EventPipeSession.Start(_endpoint, providers, requestRundown, circularBufferMB);
@@ -77,7 +79,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// <param name="circularBufferMB">The size of the runtime's buffer for collecting events in MB</param>
         /// <returns>
         /// An EventPipeSession object representing the EventPipe session that just started.
-        /// </returns> 
+        /// </returns>
         public EventPipeSession StartEventPipeSession(EventPipeProvider provider, bool requestRundown = true, int circularBufferMB = 256)
         {
             return EventPipeSession.Start(_endpoint, new[] { provider }, requestRundown, circularBufferMB);
@@ -92,7 +94,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// <param name="token">The token to monitor for cancellation requests.</param>
         /// <returns>
         /// An EventPipeSession object representing the EventPipe session that just started.
-        /// </returns> 
+        /// </returns>
         internal Task<EventPipeSession> StartEventPipeSessionAsync(IEnumerable<EventPipeProvider> providers, bool requestRundown, int circularBufferMB, CancellationToken token)
         {
             return EventPipeSession.StartAsync(_endpoint, providers, requestRundown, circularBufferMB, token);
@@ -115,7 +117,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
         /// <summary>
         /// Trigger a core dump generation.
-        /// </summary> 
+        /// </summary>
         /// <param name="dumpType">Type of the dump to be generated</param>
         /// <param name="dumpPath">Full path to the dump to be generated. By default it is /tmp/coredump.{pid}</param>
         /// <param name="logDumpGeneration">When set to true, display the dump generation debug log to the console.</param>
@@ -126,7 +128,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
         /// <summary>
         /// Trigger a core dump generation.
-        /// </summary> 
+        /// </summary>
         /// <param name="dumpType">Type of the dump to be generated</param>
         /// <param name="dumpPath">Full path to the dump to be generated. By default it is /tmp/coredump.{pid}</param>
         /// <param name="flags">logging and crash report flags. On runtimes less than 6.0, only LoggingEnabled is supported.</param>
@@ -153,7 +155,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
         /// <summary>
         /// Trigger a core dump generation.
-        /// </summary> 
+        /// </summary>
         /// <param name="dumpType">Type of the dump to be generated</param>
         /// <param name="dumpPath">Full path to the dump to be generated. By default it is /tmp/coredump.{pid}</param>
         /// <param name="logDumpGeneration">When set to true, display the dump generation debug log to the console.</param>
@@ -165,7 +167,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
         /// <summary>
         /// Trigger a core dump generation.
-        /// </summary> 
+        /// </summary>
         /// <param name="dumpType">Type of the dump to be generated</param>
         /// <param name="dumpPath">Full path to the dump to be generated. By default it is /tmp/coredump.{pid}</param>
         /// <param name="flags">logging and crash report flags. On runtimes less than 6.0, only LoggingEnabled is supported.</param>
@@ -205,7 +207,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             ValidateResponseMessage(response, nameof(AttachProfiler));
 
             // The call to set up the pipe and send the message operates on a different timeout than attachTimeout, which is for the runtime.
-            // We should eventually have a configurable timeout for the message passing, potentially either separately from the 
+            // We should eventually have a configurable timeout for the message passing, potentially either separately from the
             // runtime timeout or respect attachTimeout as one total duration.
         }
 
@@ -296,7 +298,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
             return await helper.ReadEnvironmentAsync(response.Continuation, token).ConfigureAwait(false);
         }
 
-        public void ApplyStartupHook(string startupHookPath)
+        internal void ApplyStartupHook(string startupHookPath)
         {
             IpcMessage message = CreateApplyStartupHookMessage(startupHookPath);
             IpcMessage response = IpcClient.SendMessage(_endpoint, message);
@@ -318,28 +320,64 @@ namespace Microsoft.Diagnostics.NETCore.Client
         /// </returns>
         public static IEnumerable<int> GetPublishedProcesses()
         {
-            static IEnumerable<int> GetAllPublishedProcesses()
+            static IEnumerable<int> GetAllPublishedProcesses(string[] files)
             {
-                foreach (var port in Directory.GetFiles(PidIpcEndpoint.IpcRootPath))
+                foreach (string port in files)
                 {
-                    var fileName = new FileInfo(port).Name;
-                    var match = Regex.Match(fileName, PidIpcEndpoint.DiagnosticsPortPattern);
-                    if (!match.Success) continue;
-                    var group = match.Groups[1].Value;
-                    if (!int.TryParse(group, NumberStyles.Integer, CultureInfo.InvariantCulture, out var processId))
+                    string fileName = new FileInfo(port).Name;
+                    Match match = Regex.Match(fileName, PidIpcEndpoint.DiagnosticsPortPattern);
+                    if (!match.Success)
+                    {
                         continue;
+                    }
+
+                    string group = match.Groups[1].Value;
+                    if (!int.TryParse(group, NumberStyles.Integer, CultureInfo.InvariantCulture, out int processId))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        Process.GetProcessById(processId);
+                    }
+                    catch (ArgumentException)
+                    {
+                        continue;
+                    }
 
                     yield return processId;
                 }
             }
-
-            return GetAllPublishedProcesses().Distinct();
+            try
+            {
+                string[] files = Directory.GetFiles(PidIpcEndpoint.IpcRootPath);
+                return GetAllPublishedProcesses(files).Distinct();
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                if (PidIpcEndpoint.IpcRootPath.StartsWith(@"\\.\pipe"))
+                {
+                    throw new DiagnosticsClientException($"Enumerating {PidIpcEndpoint.IpcRootPath} is not authorized", ex);
+                }
+                else
+                {
+                    throw;
+                }
+            }
         }
 
-        internal ProcessInfo GetProcessInfo()
+        public ProcessInfo GetProcessInfo()
         {
+            // Attempt to get ProcessInfo v3
+            ProcessInfo processInfo = TryGetProcessInfo3();
+            if (null != processInfo)
+            {
+                return processInfo;
+            }
+
             // Attempt to get ProcessInfo v2
-            ProcessInfo processInfo = TryGetProcessInfo2();
+            processInfo = TryGetProcessInfo2();
             if (null != processInfo)
             {
                 return processInfo;
@@ -352,8 +390,15 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
         internal async Task<ProcessInfo> GetProcessInfoAsync(CancellationToken token)
         {
+            // Attempt to get ProcessInfo v3
+            ProcessInfo processInfo = await TryGetProcessInfo3Async(token).ConfigureAwait(false);
+            if (null != processInfo)
+            {
+                return processInfo;
+            }
+
             // Attempt to get ProcessInfo v2
-            ProcessInfo processInfo = await TryGetProcessInfo2Async(token);
+            processInfo = await TryGetProcessInfo2Async(token).ConfigureAwait(false);
             if (null != processInfo)
             {
                 return processInfo;
@@ -378,10 +423,24 @@ namespace Microsoft.Diagnostics.NETCore.Client
             return TryGetProcessInfo2FromResponse(response2, nameof(GetProcessInfoAsync));
         }
 
+        private ProcessInfo TryGetProcessInfo3()
+        {
+            IpcMessage request = CreateProcessInfo3Message();
+            using IpcResponse response2 = IpcClient.SendMessageGetContinuation(_endpoint, request);
+            return TryGetProcessInfo3FromResponse(response2, nameof(GetProcessInfo));
+        }
+
+        private async Task<ProcessInfo> TryGetProcessInfo3Async(CancellationToken token)
+        {
+            IpcMessage request = CreateProcessInfo3Message();
+            using IpcResponse response2 = await IpcClient.SendMessageGetContinuationAsync(_endpoint, request, token).ConfigureAwait(false);
+            return TryGetProcessInfo3FromResponse(response2, nameof(GetProcessInfoAsync));
+        }
+
         public static byte[] SerializePayload<T>(T arg)
         {
-            using (var stream = new MemoryStream())
-            using (var writer = new BinaryWriter(stream))
+            using (MemoryStream stream = new())
+            using (BinaryWriter writer = new(stream))
             {
                 SerializePayloadArgument(arg, writer);
 
@@ -392,8 +451,8 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
         private static byte[] SerializePayload<T1, T2>(T1 arg1, T2 arg2)
         {
-            using (var stream = new MemoryStream())
-            using (var writer = new BinaryWriter(stream))
+            using (MemoryStream stream = new())
+            using (BinaryWriter writer = new(stream))
             {
                 SerializePayloadArgument(arg1, writer);
                 SerializePayloadArgument(arg2, writer);
@@ -405,8 +464,8 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
         private static byte[] SerializePayload<T1, T2, T3>(T1 arg1, T2 arg2, T3 arg3)
         {
-            using (var stream = new MemoryStream())
-            using (var writer = new BinaryWriter(stream))
+            using (MemoryStream stream = new())
+            using (BinaryWriter writer = new(stream))
             {
                 SerializePayloadArgument(arg1, writer);
                 SerializePayloadArgument(arg2, writer);
@@ -419,8 +478,8 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
         private static byte[] SerializePayload<T1, T2, T3, T4>(T1 arg1, T2 arg2, T3 arg3, T4 arg4)
         {
-            using (var stream = new MemoryStream())
-            using (var writer = new BinaryWriter(stream))
+            using (MemoryStream stream = new())
+            using (BinaryWriter writer = new(stream))
             {
                 SerializePayloadArgument(arg1, writer);
                 SerializePayloadArgument(arg2, writer);
@@ -481,7 +540,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
                 throw new ArgumentException($"{nameof(profilerGuid)} must be a valid Guid");
             }
 
-            if (String.IsNullOrEmpty(profilerPath))
+            if (string.IsNullOrEmpty(profilerPath))
             {
                 throw new ArgumentException($"{nameof(profilerPath)} must be non-null");
             }
@@ -505,6 +564,11 @@ namespace Microsoft.Diagnostics.NETCore.Client
             return new IpcMessage(DiagnosticsServerCommandSet.Process, (byte)ProcessCommandId.GetProcessInfo2);
         }
 
+        private static IpcMessage CreateProcessInfo3Message()
+        {
+            return new IpcMessage(DiagnosticsServerCommandSet.Process, (byte)ProcessCommandId.GetProcessInfo3);
+        }
+
         private static IpcMessage CreateResumeRuntimeMessage()
         {
             return new IpcMessage(DiagnosticsServerCommandSet.Process, (byte)ProcessCommandId.ResumeRuntime);
@@ -512,7 +576,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
 
         private static IpcMessage CreateSetEnvironmentVariableMessage(string name, string value)
         {
-            if (String.IsNullOrEmpty(name))
+            if (string.IsNullOrEmpty(name))
             {
                 throw new ArgumentException($"{nameof(name)} must be non-null.");
             }
@@ -528,7 +592,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
                 throw new ArgumentException($"{nameof(profilerGuid)} must be a valid Guid");
             }
 
-            if (String.IsNullOrEmpty(profilerPath))
+            if (string.IsNullOrEmpty(profilerPath))
             {
                 throw new ArgumentException($"{nameof(profilerPath)} must be non-null");
             }
@@ -540,7 +604,9 @@ namespace Microsoft.Diagnostics.NETCore.Client
         private static IpcMessage CreateWriteDumpMessage(DumpType dumpType, string dumpPath, bool logDumpGeneration)
         {
             if (string.IsNullOrEmpty(dumpPath))
+            {
                 throw new ArgumentNullException($"{nameof(dumpPath)} required");
+            }
 
             byte[] payload = SerializePayload(dumpPath, (uint)dumpType, logDumpGeneration);
             return new IpcMessage(DiagnosticsServerCommandSet.Dump, (byte)DumpCommandId.GenerateCoreDump, payload);
@@ -549,7 +615,9 @@ namespace Microsoft.Diagnostics.NETCore.Client
         private static IpcMessage CreateWriteDumpMessage(DumpCommandId command, DumpType dumpType, string dumpPath, WriteDumpFlags flags)
         {
             if (string.IsNullOrEmpty(dumpPath))
+            {
                 throw new ArgumentNullException($"{nameof(dumpPath)} required");
+            }
 
             byte[] payload = SerializePayload(dumpPath, (uint)dumpType, (uint)flags);
             return new IpcMessage(DiagnosticsServerCommandSet.Dump, (byte)command, payload);
@@ -558,9 +626,12 @@ namespace Microsoft.Diagnostics.NETCore.Client
         private static IpcMessage CreateApplyStartupHookMessage(string startupHookPath)
         {
             if (string.IsNullOrEmpty(startupHookPath))
+            {
                 throw new ArgumentException($"{nameof(startupHookPath)} required");
+            }
 
             byte[] serializedConfiguration = SerializePayload(startupHookPath);
+
             return new IpcMessage(DiagnosticsServerCommandSet.Process, (byte)ProcessCommandId.ApplyStartupHook, serializedConfiguration);
         }
 
@@ -581,6 +652,16 @@ namespace Microsoft.Diagnostics.NETCore.Client
             return ProcessInfo.ParseV2(response.Message.Payload);
         }
 
+        private static ProcessInfo TryGetProcessInfo3FromResponse(IpcResponse response, string operationName)
+        {
+            if (!ValidateResponseMessage(response.Message, operationName, ValidateResponseOptions.UnknownCommandReturnsFalse))
+            {
+                return null;
+            }
+
+            return ProcessInfo.ParseV3(response.Message.Payload);
+        }
+
         internal static bool ValidateResponseMessage(IpcMessage responseMessage, string operationName, ValidateResponseOptions options = ValidateResponseOptions.None)
         {
             switch ((DiagnosticsServerResponseId)responseMessage.Header.CommandId)
@@ -589,7 +670,7 @@ namespace Microsoft.Diagnostics.NETCore.Client
                     return true;
 
                 case DiagnosticsServerResponseId.Error:
-                    uint hr = BitConverter.ToUInt32(responseMessage.Payload, 0);
+                    uint hr = BinaryPrimitives.ReadUInt32LittleEndian(new ReadOnlySpan<byte>(responseMessage.Payload, 0, 4));
                     int index = sizeof(uint);
                     string message = null;
                     switch (hr)
