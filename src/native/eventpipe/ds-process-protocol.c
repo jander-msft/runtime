@@ -11,6 +11,35 @@
 #include "ds-rt.h"
 #include "ep-event-source.h"
 
+#undef PORTABLE_RID_OS
+
+#if defined(TARGET_UNIX)
+
+#if defined(TARGET_ANDROID)
+#define PORTABLE_RID_OS "linux-bionic"
+#elif defined(TARGET_LINUX_MUSL)
+#define PORTABLE_RID_OS "linux-musl"
+#elif defined(TARGET_LINUX)
+#define PORTABLE_RID_OS "linux"
+#elif defined(TARGET_OSX)
+#define PORTABLE_RID_OS "osx"
+#else
+#define PORTABLE_RID_OS "unix"
+#endif
+
+#elif defined(TARGET_WASI)
+#define PORTABLE_RID_OS "wasi"
+#elif defined(TARGET_WINDOWS) || defined(TARGET_WIN32)
+#define PORTABLE_RID_OS "win"
+#else
+#error Unknown OS
+#endif
+
+#define QUOTE_MACRO_HELPER(x)       #x
+#define QUOTE_MACRO(x)              QUOTE_MACRO_HELPER(x)
+
+const ep_char8_t* _ds_portable_rid_info = PORTABLE_RID_OS "-" QUOTE_MACRO(ARCH_TARGET_NAME);
+
 /*
  * Forward declares of all static functions.
  */
@@ -817,7 +846,7 @@ process_protocol_helper_get_process_info_3 (
 	clr_product_version = ep_rt_utf8_to_utf16le_string (ep_rt_runtime_version_get_utf8 (), -1);
 	ep_raise_error_if_nok (clr_product_version != NULL);
 
-	portable_rid = ep_rt_utf8_to_utf16le_string (ds_rt_get_portable_rid (), -1);
+	portable_rid = ep_rt_utf8_to_utf16le_string (_ds_portable_rid_info, -1);
 	ep_raise_error_if_nok (portable_rid != NULL);
 
 	process_info_3_payload = ds_process_info_3_payload_init (

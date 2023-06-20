@@ -16,35 +16,6 @@
 #include "ds-protocol.c"
 #endif
 
-#undef PORTABLE_RID_OS
-
-#if defined(TARGET_UNIX)
-
-#if defined(TARGET_ANDROID)
-#define PORTABLE_RID_OS "linux-bionic"
-#elif defined(TARGET_LINUX_MUSL)
-#define PORTABLE_RID_OS "linux-musl"
-#elif defined(TARGET_LINUX)
-#define PORTABLE_RID_OS "linux"
-#elif defined(TARGET_OSX)
-#define PORTABLE_RID_OS "osx"
-#else
-#define PORTABLE_RID_OS "unix"
-#endif
-
-#elif defined(TARGET_WASI)
-#define PORTABLE_RID_OS "wasi"
-#elif defined(TARGET_WINDOWS)
-#define PORTABLE_RID_OS "win"
-#else
-#error Unknown OS
-#endif
-
-#define QUOTE_MACRO_HELPER(x)       #x
-#define QUOTE_MACRO(x)              QUOTE_MACRO_HELPER(x)
-
-const ep_char8_t* _ds_portable_rid_info = PORTABLE_RID_OS "-" QUOTE_MACRO(ARCH_TARGET_NAME);
-
 #endif /* ENABLE_PERFTRACING */
 
 extern const char quiet_linker_empty_file_warning_diagnostics_sources;

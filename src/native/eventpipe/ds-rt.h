@@ -25,8 +25,6 @@
 #define DS_ENTER_BLOCKING_PAL_SECTION ds_rt_redefine
 #define DS_EXIT_BLOCKING_PAL_SECTION ds_rt_redefine
 
-extern const ep_char8_t *_ds_portable_rid_info;
-
 /*
 * AutoTrace.
 */
@@ -123,14 +121,6 @@ ds_rt_disable_perfmap (void);
 static
 uint32_t
 ds_rt_apply_startup_hook (const ep_char16_t *startup_hook_path);
-
-static
-inline
-const ep_char8_t *
-ds_rt_get_portable_rid (void)
-{
-	return _ds_portable_rid_info;
-}
 
 /*
 * DiagnosticServer.
